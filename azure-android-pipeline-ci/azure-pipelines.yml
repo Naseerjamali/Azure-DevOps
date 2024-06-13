@@ -1,0 +1,68 @@
+trigger:
+- master
+
+variables:
+- group: 'Variable Group Keystore'
+
+pool:
+  name: General
+  demands:
+  - agent.name -equals Windows Agent
+  
+stages:
+- stage: Build
+  displayName: 'Build App'
+  jobs:
+  - job: BuildJob
+    displayName: 'Build Job'
+    steps:
+    - task: UseDotNet@2
+      displayName: 'Install .NET'
+      inputs:
+        packageType: 'sdk'
+        version: '8.0.x'
+    - script: dotnet --list-sdks
+      displayName: 'Dotnet Output'
+
+    - task: CmdLine@2
+      displayName: 'Install MAUI'
+      inputs:
+        script: |
+          dotnet nuget locals all --clear
+          dotnet workload install maui
+
+    - task: DownloadSecureFile@1
+      displayName: Download Secure File
+      name: keystore
+      inputs:
+        secureFile: '$(KeyStore-FileName)'
+    
+    - task: CmdLine@2
+      displayName: Move KeyStore to Working Directory
+      inputs:
+        script: |
+          move $(keystore.secureFilePath) $(System.DefaultWorkingDirectory)
+
+    - task: CmdLine@2
+      displayName: Build Android App
+      inputs:
+        script: |
+          cd SimpleMauiApp\
+          cd
+          dotnet publish -f net8.0-android -c Release
+      continueOnError: true
+    - task: CopyFiles@2
+      displayName: Copy APK and AAB
+      inputs:
+          Contents: |
+            **\*Signed.apk
+            **\*Signed.aab
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+          flattenFolders: true
+    
+    - task: PublishBuildArtifacts@1
+      displayName: Publish APK und AAB
+      inputs:
+          PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+          ArtifactName: '$(ARTIFACT_ANDROID_DROP_NAME)'
+          publishLocation: 'Container'
